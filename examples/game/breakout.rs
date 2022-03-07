@@ -52,6 +52,11 @@ enum PlayState {
     GameOver,
 }
 
+struct Sounds {
+    hit_brick: Handle<AudioSource>,
+    game_over: Handle<AudioSource>,
+}
+
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Add the game's entities to our world
 
@@ -242,6 +247,11 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .insert(Collider::Scorable);
         }
     }
+
+    commands.insert_resource(Sounds {
+        hit_brick: asset_server.load("sounds/low-impactwav-14905.ogg"),
+        game_over: asset_server.load("sounds/533034__evretro__8-bit-game-over-sound-tune.ogg"),
+    });
 }
 
 fn paddle_movement_system(
@@ -276,9 +286,15 @@ fn scoreboard_system(scoreboard: Res<Scoreboard>, mut query: Query<&mut Text>) {
     text.sections[3].value = format!("{}", scoreboard.lives);
 }
 
-fn lose_game_system(scoreboard: Res<Scoreboard>, mut state: ResMut<State<PlayState>>) {
+fn lose_game_system(
+    scoreboard: Res<Scoreboard>,
+    mut state: ResMut<State<PlayState>>,
+    sounds: Res<Sounds>,
+    audio: Res<Audio>,
+) {
     if scoreboard.lives == 0 && *state.current() == PlayState::Playing {
         state.set(PlayState::GameOver).unwrap();
+        audio.play(sounds.game_over.clone());
     }
 }
 
@@ -287,6 +303,8 @@ fn ball_collision_system(
     mut scoreboard: ResMut<Scoreboard>,
     mut ball_query: Query<(&mut Ball, &Transform)>,
     collider_query: Query<(Entity, &Collider, &Transform)>,
+    audio: Res<Audio>,
+    sounds: Res<Sounds>,
 ) {
     let (mut ball, ball_transform) = ball_query.single_mut();
     let ball_size = ball_transform.scale.truncate();
@@ -305,6 +323,7 @@ fn ball_collision_system(
             if let Collider::Scorable = *collider {
                 scoreboard.score += 1;
                 commands.entity(collider_entity).despawn();
+                audio.play(sounds.hit_brick.clone());
             }
 
             // reflect the ball when it collides
