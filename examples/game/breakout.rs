@@ -1,5 +1,4 @@
 use bevy::{
-    core::FixedTimestep,
     prelude::*,
     sprite::collide_aabb::{collide, Collision},
 };
@@ -9,17 +8,18 @@ const TIME_STEP: f32 = 1.0 / 60.0;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .insert_resource(Scoreboard { score: 0 })
+        .insert_resource(Scoreboard { score: 0, lives: 3 })
+        .add_state(PlayState::Playing)
         .insert_resource(ClearColor(Color::rgb(0.9, 0.9, 0.9)))
         .add_startup_system(setup)
         .add_system_set(
-            SystemSet::new()
-                .with_run_criteria(FixedTimestep::step(TIME_STEP as f64))
+            SystemSet::on_update(PlayState::Playing)
                 .with_system(paddle_movement_system)
                 .with_system(ball_collision_system)
                 .with_system(ball_movement_system),
         )
         .add_system(scoreboard_system)
+        .add_system(lose_game_system)
         .add_system(bevy::input::system::exit_on_esc_system)
         .run();
 }
@@ -43,6 +43,13 @@ enum Collider {
 
 struct Scoreboard {
     score: usize,
+    lives: usize,
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+enum PlayState {
+    Playing,
+    GameOver,
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -90,6 +97,22 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             sections: vec![
                 TextSection {
                     value: "Score: ".to_string(),
+                    style: TextStyle {
+                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                        font_size: 40.0,
+                        color: Color::rgb(0.5, 0.5, 1.0),
+                    },
+                },
+                TextSection {
+                    value: "".to_string(),
+                    style: TextStyle {
+                        font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+                        font_size: 40.0,
+                        color: Color::rgb(1.0, 0.5, 0.5),
+                    },
+                },
+                TextSection {
+                    value: "\nLives: ".to_string(),
                     style: TextStyle {
                         font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                         font_size: 40.0,
@@ -250,6 +273,13 @@ fn ball_movement_system(mut ball_query: Query<(&Ball, &mut Transform)>) {
 fn scoreboard_system(scoreboard: Res<Scoreboard>, mut query: Query<&mut Text>) {
     let mut text = query.single_mut();
     text.sections[1].value = format!("{}", scoreboard.score);
+    text.sections[3].value = format!("{}", scoreboard.lives);
+}
+
+fn lose_game_system(scoreboard: Res<Scoreboard>, mut state: ResMut<State<PlayState>>) {
+    if scoreboard.lives == 0 && *state.current() == PlayState::Playing {
+        state.set(PlayState::GameOver).unwrap();
+    }
 }
 
 fn ball_collision_system(
@@ -303,6 +333,10 @@ fn ball_collision_system(
             // break if this collide is on a solid, otherwise continue check whether a solid is
             // also in collision
             if let Collider::Solid = *collider {
+                // If we hit the top of a solid, the ball has hit the floor
+                if let Collision::Top = collision {
+                    scoreboard.lives -= 1;
+                }
                 break;
             }
         }
